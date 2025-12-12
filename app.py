@@ -27,7 +27,7 @@ BASE_DIR = os.path.dirname(__file__)
 DATA_FILE = os.path.join(BASE_DIR, "data.csv")
 USER_DATA_FILE = os.path.join(BASE_DIR, "users.csv")
 
-BACKGROUND_IMAGE = os.path.join(BASE_DIR, "assets", "io.jpg")
+BACKGROUND_IMAGE = os.path.join(BASE_DIR, "assets", "login.jpg")
 LOGIN_BACKGROUND = os.path.join(BASE_DIR, "assets", "fitness.jpg")
 
 # -----------------------------
@@ -283,4 +283,5 @@ if not st.session_state.logged_in:
     show_login()
 else:
     show_main_app()
+
 
