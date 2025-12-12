@@ -7,7 +7,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
 
-# Initialize session states
+# -----------------------------
+# SESSION STATE
+# -----------------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -17,15 +19,20 @@ if "user_data" not in st.session_state:
 if "show_signup" not in st.session_state:
     st.session_state.show_signup = False
 
-# Streamlit Cloud paths
-DATA_FILE = "data.csv"
-USER_DATA_FILE = "users.csv"
+# -----------------------------
+# FILE PATH FIX (IMPORTANT)
+# -----------------------------
+BASE_DIR = os.path.dirname(__file__)
+DATA_FILE = os.path.join(BASE_DIR, "data.csv")
+USER_DATA_FILE = os.path.join(BASE_DIR, "users.csv")
 
-# IMPORTANT: Images must be inside your GitHub repo
-BACKGROUND_IMAGE = "assets/fitness.jpg"
-LOGIN_BACKGROUND = "assets/login.jpg"
+# IMAGE PATHS INSIDE REPO
+BACKGROUND_IMAGE = os.path.join(BASE_DIR, "assets", "fitness.jpg")
+LOGIN_BACKGROUND = os.path.join(BASE_DIR, "assets", "login.jpg")
 
-# Columns
+# -----------------------------
+# COLUMN DEFINITIONS
+# -----------------------------
 INPUT_COLS = [
     "age", "gender", "height_cm", "weight_kg", "step_count", "distance_km",
     "workout_type", "workout_duration_min", "heart_rate_max", "heart_rate_resting",
@@ -45,12 +52,12 @@ HIDDEN_INPUTS = [
     "heart_rate_max", "heart_rate_resting"
 ]
 
-# ---------------- BACKGROUND FIX ----------------
-
+# -----------------------------
+# BACKGROUND IMAGE LOADER FIX
+# -----------------------------
 def add_bg_from_local(image_file):
-    """Loads background image safely."""
     if not os.path.exists(image_file):
-        st.warning(f"⚠️ Background image not found: {image_file}")
+        st.warning(f"⚠️ Background image file missing: {image_file}")
         return
 
     with open(image_file, "rb") as file:
@@ -73,24 +80,32 @@ def add_bg_from_local(image_file):
 def add_bg_from_local_login():
     add_bg_from_local(LOGIN_BACKGROUND)
 
-# ---------------- DATA FUNCTIONS ----------------
-
+# -----------------------------
+# DATA LOADING
+# -----------------------------
 def load_training_data():
+    if not os.path.exists(DATA_FILE):
+        st.error("❌ data.csv not found in the repository!")
+        return pd.DataFrame()
+
     df = pd.read_csv(DATA_FILE)
-    df["fitness level"] = df["fitness level"].map({"beginner": 0, "intermediate": 1, "advanced": 2})
+    df["fitness level"] = df["fitness level"].map(
+        {"beginner": 0, "intermediate": 1, "advanced": 2}
+    )
     return df
 
 @st.cache_resource
 def train_model():
     df = load_training_data()
     X = pd.get_dummies(df[INPUT_COLS], columns=["gender", "workout_type"], drop_first=True)
-    Y = df[TARGET_COLS]
+    Y = df[TARGET_COLS].astype(float)
 
-    X, Y = X.astype(float), Y.astype(float)
+    X = X.astype(float)
 
     xtrain, xtest, ytrain, ytest = train_test_split(X, Y, test_size=0.3, random_state=42)
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(xtrain, ytrain)
+
     r2 = r2_score(ytest, model.predict(xtest))
     return model, r2, X.columns.tolist()
 
@@ -98,14 +113,18 @@ def train_model():
 def get_feature_defaults():
     df = load_training_data()
     defaults = {}
+
     for col in INPUT_COLS:
+        if col not in df.columns:
+            defaults[col] = 0
+            continue
+
         if pd.api.types.is_numeric_dtype(df[col]):
             defaults[col] = df[col].mean()
         else:
             defaults[col] = df[col].mode()[0]
-    return defaults
 
-# ---------------- PREPROCESSING ----------------
+    return defaults
 
 def preprocess_user_input(user_input, training_columns):
     df = pd.DataFrame([user_input])
@@ -113,7 +132,7 @@ def preprocess_user_input(user_input, training_columns):
 
     for col in INPUT_COLS:
         if col not in ["gender", "workout_type"]:
-            df[col] = float(df[col]) if str(df[col].values[0]).strip() else defaults[col]
+            df[col] = float(df[col]) if df[col].values[0] != "" else defaults[col]
 
     df = pd.get_dummies(df, columns=["gender", "workout_type"], drop_first=True)
 
@@ -123,14 +142,20 @@ def preprocess_user_input(user_input, training_columns):
 
     return df[training_columns].astype(float)
 
-# ---------------- AUTH & LOGIN ----------------
-
+# -----------------------------
+# USER DATA FUNCTIONS
+# -----------------------------
 def load_user_data():
-    return pd.read_csv(USER_DATA_FILE) if os.path.exists(USER_DATA_FILE) else pd.DataFrame(columns=["username","password"]+INPUT_COLS)
+    if os.path.exists(USER_DATA_FILE):
+        return pd.read_csv(USER_DATA_FILE)
+    return pd.DataFrame(columns=["username", "password"] + INPUT_COLS)
 
 def save_user_data(df):
     df.to_csv(USER_DATA_FILE, index=False)
 
+# -----------------------------
+# LOGIN SCREEN
+# -----------------------------
 def show_login():
     add_bg_from_local_login()
     st.title("🔐 Login")
@@ -143,14 +168,14 @@ def show_login():
         if username in df["username"].values:
             row = df[df["username"] == username].iloc[0]
             if row["password"] == password:
+                st.success("Logged in successfully!")
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.user_data = row[INPUT_COLS].to_dict()
-                st.success("Login successful!")
             else:
-                st.error("Wrong password.")
+                st.error("Wrong password")
         else:
-            st.error("User not found.")
+            st.error("User not found")
 
     if st.button("Sign Up"):
         st.session_state.show_signup = True
@@ -163,25 +188,26 @@ def show_login():
         if st.button("Register"):
             df = load_user_data()
             if new_user in df["username"].values:
-                st.error("Username already exists.")
+                st.error("Username already exists")
             else:
                 defaults = get_feature_defaults()
-                row = {"username": new_user, "password": new_pass}
-                row.update(defaults)
-                df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+                new_row = {"username": new_user, "password": new_pass}
+                new_row.update(defaults)
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 save_user_data(df)
                 st.success("Account created! Please log in.")
                 st.session_state.show_signup = False
 
-# ---------------- MAIN APP ----------------
-
+# -----------------------------
+# MAIN APP
+# -----------------------------
 def show_main_app():
     add_bg_from_local(BACKGROUND_IMAGE)
-    model, r2, cols = train_model()
 
-    st.sidebar.header("Inputs")
+    st.sidebar.title(f"Welcome {st.session_state.username}")
+    model, r2, columns = train_model()
 
-    df_data = load_training_data()
+    df = load_training_data()
     defaults = get_feature_defaults()
     user_input = {}
 
@@ -189,33 +215,35 @@ def show_main_app():
         if col in HIDDEN_INPUTS:
             user_input[col] = defaults[col]
             continue
+
         if col == "gender":
-            user_input[col] = st.sidebar.selectbox(col, ["Select","male","female","non-binary"])
+            user_input[col] = st.sidebar.selectbox(col, ["male", "female", "non-binary"])
+
         elif col == "workout_type":
-            options = ["Select"] + sorted(df_data["workout_type"].unique())
+            options = sorted(df["workout_type"].unique())
             user_input[col] = st.sidebar.selectbox(col, options)
+
         else:
-            minv = float(df_data[col].min())
-            maxv = float(df_data[col].max())
+            minv = float(df[col].min())
+            maxv = float(df[col].max())
             user_input[col] = st.sidebar.slider(col, minv, maxv, defaults[col])
 
     st.title("🏋 Fitness Prediction App")
 
     if st.sidebar.button("Predict"):
-        X = preprocess_user_input(user_input, cols)
+        X = preprocess_user_input(user_input, columns)
         pred = model.predict(X)[0]
 
-        out = pd.DataFrame([pred], columns=TARGET_COLS)
-
+        result = pd.DataFrame([pred], columns=TARGET_COLS)
         st.subheader("📊 Prediction Output")
-        st.table(out)
+        st.table(result)
 
-# ---------------- PAGE CONFIG ----------------
-
+# -----------------------------
+# PAGE ROUTING
+# -----------------------------
 st.set_page_config(page_title="Fitness App", layout="wide")
 
 if not st.session_state.logged_in:
     show_login()
 else:
-    st.sidebar.success(f"Logged in as {st.session_state.username}")
     show_main_app()
